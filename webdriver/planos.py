@@ -1,3 +1,4 @@
+                                                                   
 from .conexao import abrir_conexao
 
 
@@ -48,7 +49,7 @@ def buscar(id_plano):
 def atualizar(id_plano, nome, duracao_dias, espaco_por_usuario_bytes):
     inteiro_positivo(id_plano, "ID")
     nome = validar(nome, duracao_dias, espaco_por_usuario_bytes)
-    
+                                                                                     
     with abrir_conexao() as conexao:
         cursor = conexao.cursor()
         try:
@@ -63,5 +64,5 @@ def atualizar(id_plano, nome, duracao_dias, espaco_por_usuario_bytes):
 
 def excluir(id_plano):
     inteiro_positivo(id_plano, "ID")
-    
+                                                                     
     return executar("DELETE FROM plano WHERE id_plano = %s", (id_plano,)) > 0
