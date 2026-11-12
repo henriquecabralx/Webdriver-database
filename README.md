@@ -127,7 +127,7 @@ Webdriver-database/
 ├── docs/
 │   ├── modelo-conceitual/
 │   ├── modelo-logico/
-│   ├── entrega-01.md
+│   ├── conexao-crud-planos.md
 │   └── crud-python.md
 ├── sql/
 │   └── 01-modelo-fisico.sql
