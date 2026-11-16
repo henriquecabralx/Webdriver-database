@@ -1,12 +1,3 @@
-"""Testes de integracao da Parte 2 em MySQL REAL (permissoes, procedures, funcao, triggers).
-
-Nao rodam por padrao. Exigem MySQL 8.0.16+ , o cliente `mysql` no PATH e uma conta root:
-    WEBDRIVER_TEST_MYSQL=1 [WEBDRIVER_TEST_ROOT_USER=root] [WEBDRIVER_TEST_ROOT_PASSWORD=...]
-    [WEBDRIVER_TEST_SOCKET=/var/run/mysqld/mysqld.sock | WEBDRIVER_TEST_HOST=127.0.0.1]
-    python -m unittest tests.test_seguranca_mysql -v
-Os scripts 01-08 sao carregados em um banco descartavel (webdriver_teste) com roles de nome
-TstPapel*; contas t* sao criadas e removidas. O banco `webdriver` e as roles reais nao sao tocados.
-"""
 import os
 import re
 import shutil
@@ -18,7 +9,7 @@ from pathlib import Path
 try:
     import mysql.connector
     from mysql.connector import errors
-except ImportError:  # pragma: no cover
+except ImportError:  
     mysql = None
 
 warnings.filterwarnings('ignore', category=DeprecationWarning, module='tests')
@@ -31,7 +22,6 @@ HOST = os.environ.get('WEBDRIVER_TEST_HOST')
 SOCKET = os.environ.get('WEBDRIVER_TEST_SOCKET', '/var/run/mysqld/mysqld.sock')
 ATIVO = os.environ.get('WEBDRIVER_TEST_MYSQL') == '1' and mysql is not None and shutil.which('mysql')
 ROLES = {'PapelUsuario': 'TstPapelUsuario', 'PapelEmpresa': 'TstPapelEmpresa', 'PapelAdm': 'TstPapelAdm'}
-# login: (instituicao, role, administrador?)
 CONTAS = {'tana': ('A', 'PapelUsuario', False), 'tbia': ('A', 'PapelUsuario', False),
           'tcarlos': ('B', 'PapelUsuario', False), 'tdani': ('A', 'PapelAdm', True),
           'tempa': ('A', 'PapelEmpresa', False), 'tempb': ('B', 'PapelEmpresa', False),
@@ -158,7 +148,6 @@ class SegurancaMySQL(unittest.TestCase):
             (self.chamar(login, sql, args) if proc else self.consultar(login, sql, args))
         return e.exception
 
-    # 1-3
     def test_usuario_nao_ve_privado_de_outro_e_ve_proprios_e_compartilhados(self):
         self.assertNotIn('bia_priv.txt', self.nomes('tana'))
         self.assertIn('ana_priv.txt', self.nomes('tana'))
@@ -169,7 +158,6 @@ class SegurancaMySQL(unittest.TestCase):
         self.assertNotIn('ana_comp.txt', carlos)
         self.assertNotIn('bia_priv.txt', carlos)
 
-    # 4 + identidade
     def test_usuario_nao_altera_sem_autorizacao_nem_assume_identidade(self):
         args = ('ana_comp.txt', 'x.txt', 'text/plain', 'PRIVADO', 1, '/x', 'http://x')
         self.assertEqual(self.nega('tbia', 'usr_atualizar_arquivo', args, True).errno, 1644)  # compartilhado, nao dono
@@ -185,7 +173,6 @@ class SegurancaMySQL(unittest.TestCase):
         self.chamar('tana', 'usr_atualizar_arquivo', ('ana_priv.txt', 'ana_novo.txt', 'text/plain', 'PRIVADO', 20, '/n', 'http://n'))
         self.assertIn('ana_novo.txt', self.nomes('tana'))
 
-    # 5-6
     def test_empresa_isolada_e_somente_leitura(self):
         a = {r[0] for r in self.consultar('tempa', 'SELECT login FROM vw_empresa_usuarios')}
         b = {r[0] for r in self.consultar('tempb', 'SELECT login FROM vw_empresa_usuarios')}
@@ -198,7 +185,6 @@ class SegurancaMySQL(unittest.TestCase):
             self.assertEqual(self.nega('tempa', sql).errno, 1142, sql)
         self.assertEqual(self.nega('tempa', 'Remover_acessos', (self.comp,), True).errno, 1370)
 
-    # 7-8
     def test_admin_opera_e_usuario_comum_nao(self):
         adm = self.como('tdani').cursor()
         adm.execute("INSERT INTO plano(nome,duracao_dias,espaco_por_usuario_bytes) VALUES('novo',1,1)")
@@ -214,12 +200,10 @@ class SegurancaMySQL(unittest.TestCase):
             self.assertEqual(self.nega(login, 'Conta_usuários', (self.comp,), True).errno, 1370)
             self.assertEqual(self.nega(login, 'INSERT INTO plano(nome,duracao_dias,espaco_por_usuario_bytes) VALUES(1,1,1)').errno, 1142)
             self.nega(login, "CREATE USER 'hacker'@'%'")
-        # role de admin concedida a conta que nao esta em administrador: a procedure valida a conta
         e = self.nega('tfalso', 'Remover_acessos', (self.comp,), True)
         self.assertIn('administradores', e.msg)
         self.assertIn('administradores', self.nega('tfalso', 'Conta_usuários', (self.comp,), True).msg)
 
-    # 9
     def test_nenhuma_role_acessa_atividades_recentes(self):
         self.carregar('tana', 'recente.txt')
         for login in ('tana', 'tempa', 'tdani', 'tfalso'):
@@ -229,7 +213,6 @@ class SegurancaMySQL(unittest.TestCase):
                 self.assertIn(self.nega(login, sql).errno, (1142, 1370, 1143), (login, sql))
             for proc in ('Verificar_atividades', 'Chavear'):
                 self.assertEqual(self.nega(login, proc, (1,) if proc == 'Chavear' else (), True).errno, 1370)
-        # nenhum grant (direto ou herdado) das roles menciona a tabela ou rotinas restritas
         for r in ROLES.values():
             texto = ' '.join(x[0] for x in self.raiz(f'SHOW GRANTS FOR {r}'))
             for proibido in ('atividades_recentes', 'Verificar_atividades', 'Chavear', 'fn_arquivo_inativo', '`*`.*', ' ON *.*'):
@@ -237,7 +220,6 @@ class SegurancaMySQL(unittest.TestCase):
         self.assertEqual(self.raiz(f"SELECT view_name FROM information_schema.view_table_usage WHERE view_schema='{DB}' AND table_name='atividades_recentes'"), [])
         self.assertEqual(self.raiz("SELECT user FROM mysql.user WHERE user=''"), [])
 
-    # 10
     def test_historico_somente_leitura(self):
         self.assertGreaterEqual(len(self.consultar('tana', 'SELECT * FROM vw_historico_usuario')), 3)
         self.assertEqual({r[2] for r in self.consultar('tana', 'SELECT * FROM vw_historico_usuario')}, {'tana'})
@@ -247,7 +229,6 @@ class SegurancaMySQL(unittest.TestCase):
                     'SELECT * FROM operacao_arquivo'):
             self.assertEqual(self.nega('tana', sql).errno, 1142, sql)
 
-    # 11
     def test_executaveis_bloqueados(self):
         for nome, tipo in (('x.exe', 'text/plain'), ('foto.jpg.EXE ', 'image/jpeg'), ('a.bat.', 'text/plain'),
                            ('setup', 'application/x-msdownload'), ('run.sh', 'text/plain'), ('semext', '.exe')):
@@ -262,7 +243,6 @@ class SegurancaMySQL(unittest.TestCase):
         with self.assertRaises(errors.Error):
             self.como('tdani').cursor().execute("INSERT INTO arquivo(id_dono,nome,tipo,tamanho_bytes,localizacao,url) VALUES(1,'v.msi','a',1,'/','u')")
 
-    # 12
     def test_procedures_e_funcao(self):
         fid = self.id_arquivo('ana_priv.txt')
         self.raiz("UPDATE atividades_recentes SET ultima_versao='2000-01-01'")
@@ -293,7 +273,6 @@ class SegurancaMySQL(unittest.TestCase):
         self.raiz('DELETE FROM atividades_recentes WHERE id_arquivo=%s', (fid,))
         self.assertEqual(self.raiz('SELECT fn_arquivo_inativo(%s)', (fid,)), [(0,)])
 
-    # 13
     def test_triggers(self):
         fid = self.id_arquivo('ana_priv.txt')
         self.assertEqual(self.raiz('SELECT ultima_versao=CURDATE() FROM atividades_recentes WHERE id_arquivo=%s', (fid,)), [(1,)])
@@ -308,7 +287,6 @@ class SegurancaMySQL(unittest.TestCase):
         self.assertEqual(self.raiz('SELECT acesso, ultima_versao=CURDATE() FROM atividades_recentes WHERE id_arquivo=%s', (self.comp,)), [('NAO_PRIORITARIO', 1)])
         self.assertIn('ana_comp.txt', self.nomes('tcarlos'))
 
-    # 14
     def test_views_sem_ids_nem_senhas(self):
         cols = self.raiz("SELECT table_name,column_name FROM information_schema.columns WHERE table_schema=%s AND table_name LIKE 'vw\\_%%'", (DB,))
         self.assertGreater(len(cols), 30)

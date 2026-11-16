@@ -1,5 +1,3 @@
-"""Testes isolados (sem MySQL) da integração Python da Parte 2.
-As regras de banco são verificadas em tests/test_seguranca_mysql.py."""
 import sys
 import types
 import unittest
